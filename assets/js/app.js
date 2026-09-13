@@ -47,11 +47,29 @@
   function updateWeather() {
     var el = document.getElementById('weatherCard');
     if (!el) return;
+    var term = Solar.getTerm(new Date());
+    // 动态背景：有节气动漫图用图，无图用马卡龙渐变兜底
+    var grad = 'linear-gradient(135deg,' + term.grad[0] + ',' + term.grad[1] + ')';
+    el.style.backgroundImage = 'url(' + term.img + '), ' + grad;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center';
+
+    function tipBlock() {
+      var rec = Solar.getRecommend(term.key);
+      var good = (rec.good || []).slice(0, 4).map(function (x) { return x.n; }).join('、');
+      var bad = (rec.bad || []).slice(0, 4).map(function (x) { return x.n; }).join('、');
+      return '<div class="term-tip" data-action="solar-detail">' +
+        '<div class="term-tip-h">🌿 ' + esc(term.name) + ' · 时令饮食</div>' +
+        '<div class="term-tip-row"><span class="tag good">宜</span><span>' + esc(good) + '</span></div>' +
+        '<div class="term-tip-row"><span class="tag bad">忌</span><span>' + esc(bad) + '</span></div>' +
+        '<div class="term-tip-more">点击查看中医详解 ›</div></div>';
+    }
     function fill(d) {
-      el.innerHTML = '<div class="between"><div><div class="big" style="font-size:20px">' + d.icon + ' ' + d.temp + '°</div>' +
-        '<div class="muted">' + d.text + (d.city ? ' · 📍' + d.city : '') + '</div></div>' +
+      el.innerHTML = '<div class="wc-inner"><div class="between"><div><div class="big" style="font-size:20px">' + d.icon + ' ' + d.temp + '°</div>' +
+        '<div class="muted">' + d.text + (d.city ? ' · 📍' + esc(d.city) : '') + '</div></div>' +
         '<div style="text-align:right"><div class="muted">湿度 ' + d.hum + '%</div><div class="muted">风 ' + d.wind + ' km/h</div>' +
-        '<button class="btn ghost" id="openWeather" style="margin-top:6px;padding:5px 10px;font-size:12px">📱 打开天气</button></div></div>';
+        '<button class="btn ghost" id="openWeather" style="margin-top:6px;padding:5px 10px;font-size:12px">📱 打开天气</button></div></div>' +
+        tipBlock() + '</div>';
       var b = document.getElementById('openWeather');
       if (b) b.addEventListener('click', openWeatherApp);
     }
@@ -66,7 +84,9 @@
         return { icon: wt.icon, temp: Math.round(c.temperature_2m), text: wt.text, hum: c.relative_humidity_2m, wind: Math.round(c.wind_speed_10m) };
       }).catch(function () { return null; });
       var gP = fetch(gUrl).then(function (r) { return r.json(); }).then(function (g) {
-        return g.city || g.locality || g.principalSubdivision || '定位';
+        var adm = (g.localityInfo && g.localityInfo.administrative) || [];
+        function pick(desc) { var a = adm.filter(function (x) { return x.description === desc; })[0]; return a ? a.name : null; }
+        return pick('County') || pick('City') || g.city || g.locality || g.principalSubdivision || '定位';
       }).catch(function () { return '定位'; });
       Promise.all([wP, gP]).then(function (res) {
         var w = res[0], city = res[1];
@@ -75,6 +95,29 @@
       });
     }, function () { fallback('北京'); }, { timeout: 8000 });
     function fallback(city) { fill({ icon: '⛅', temp: '—', text: '实时获取失败·用默认城市', city: city || '北京', hum: '—', wind: '—' }); }
+  }
+
+  /* ---------- 时令饮食大界面（中医详解） ---------- */
+  function renderSolarDetail() {
+    var term = Solar.getTerm(new Date());
+    var rec = Solar.getRecommend(term.key);
+    var grad = 'linear-gradient(135deg,' + term.grad[0] + ',' + term.grad[1] + ')';
+    var bg = 'url(' + term.img + '), ' + grad;
+    function items(list, cls) {
+      return (list || []).map(function (x) {
+        return '<div class="solar-item"><div class="solar-item-h"><span class="tag ' + cls + '">' + (cls === 'good' ? '宜' : '忌') + '</span> ' + esc(x.n) + '</div>' +
+          '<div class="solar-item-w">' + esc(x.w) + '</div></div>';
+      }).join('');
+    }
+    root.innerHTML =
+      '<div class="solar-detail" style="background-image:' + bg + ';background-size:cover;background-position:center">' +
+      '<div class="solar-overlay">' +
+      '<div class="solar-head"><button class="icon-btn" data-action="nav:home">←</button>' +
+      '<div><div class="big">🌿 ' + esc(term.name) + '</div><div class="muted">' + esc(term.season) + '季 · 时令饮食（中医视角）</div></div></div>' +
+      '<div class="solar-panel">' +
+      '<div class="solar-sec"><div class="solar-sec-t good-t">✅ 宜吃 · 顺应时令</div>' + items(rec.good, 'good') + '</div>' +
+      '<div class="solar-sec"><div class="solar-sec-t bad-t">⛔ 忌吃 · 少碰为妙</div>' + items(rec.bad, 'bad') + '</div>' +
+      '</div></div></div>' + tabbar('home');
   }
 
   /* ---------- 路由 ---------- */
@@ -627,7 +670,8 @@
     var map = {
       home: renderHome, library: renderLibrary, add: renderAdd, mine: renderMine,
       recipe: function () { renderDetail(route.id); }, edit: function () { renderEdit(route.id); },
-      calendar: renderCalendar, tags: function () { renderMine(); openTags(); }
+      calendar: renderCalendar, tags: function () { renderMine(); openTags(); },
+      solar: renderSolarDetail
     };
     if (route.name === 'share') { renderShare(route.data); return; }
     (map[route.name] || renderHome)();
@@ -638,6 +682,7 @@
     var el = e.target.closest('[data-action]'); if (!el) return;
     var a = el.dataset.action; var p = a.split(':');
     if (p[0] === 'nav') { navigate(p[1]); }
+    else if (p[0] === 'solar-detail') { navigate('solar'); }
     else if (p[0] === 'edit-title') { editTitle(); }
     else if (p[0] === 'toggle-theme') { toggleTheme(); }
     else if (p[0] === 'toggle-view') { libView = (libView === 'grid') ? 'list' : 'grid'; renderLibrary(); }
