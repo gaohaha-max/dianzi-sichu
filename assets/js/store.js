@@ -113,6 +113,14 @@
       write('users', users);
       return users[0];
     },
+    getSetting: function (k, def) {
+      try { var s = JSON.parse(localStorage.getItem(NS + 'settings') || '{}'); return (s && s[k] !== undefined) ? s[k] : def; }
+      catch (e) { return def; }
+    },
+    setSetting: function (k, v) {
+      var s; try { s = JSON.parse(localStorage.getItem(NS + 'settings') || '{}'); } catch (e) { s = {}; }
+      s[k] = v; localStorage.setItem(NS + 'settings', JSON.stringify(s)); return v;
+    },
     getUser: function () { return read('users')[0] || null; }
   };
 

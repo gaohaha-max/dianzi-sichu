@@ -49,7 +49,7 @@
     if (!el) return;
     function fill(d) {
       el.innerHTML = '<div class="between"><div><div class="big" style="font-size:20px">' + d.icon + ' ' + d.temp + '°</div>' +
-        '<div class="muted">' + d.text + (d.city ? ' · ' + d.city : '') + '</div></div>' +
+        '<div class="muted">' + d.text + (d.city ? ' · 📍' + d.city : '') + '</div></div>' +
         '<div style="text-align:right"><div class="muted">湿度 ' + d.hum + '%</div><div class="muted">风 ' + d.wind + ' km/h</div>' +
         '<button class="btn ghost" id="openWeather" style="margin-top:6px;padding:5px 10px;font-size:12px">📱 打开天气</button></div></div>';
       var b = document.getElementById('openWeather');
@@ -59,14 +59,22 @@
     if (!navigator.geolocation) { fill({ icon: '⛅', temp: '—', text: '已用默认城市', city: '北京', hum: '—', wind: '—' }); return; }
     navigator.geolocation.getCurrentPosition(function (pos) {
       var lat = pos.coords.latitude, lon = pos.coords.longitude;
-      fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon + '&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=auto')
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          var c = j.current || {}; var wt = weatherText(c.weather_code);
-          fill({ icon: wt.icon, temp: Math.round(c.temperature_2m), text: wt.text, city: '定位', hum: c.relative_humidity_2m, wind: Math.round(c.wind_speed_10m) });
-        }).catch(function () { fallback(); });
-    }, function () { fallback(); }, { timeout: 8000 });
-    function fallback() { fill({ icon: '⛅', temp: '—', text: '实时获取失败·用默认城市', city: '北京', hum: '—', wind: '—' }); }
+      var wUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon + '&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=auto';
+      var gUrl = 'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lon + '&localityLanguage=zh';
+      var wP = fetch(wUrl).then(function (r) { return r.json(); }).then(function (j) {
+        var c = j.current || {}; var wt = weatherText(c.weather_code);
+        return { icon: wt.icon, temp: Math.round(c.temperature_2m), text: wt.text, hum: c.relative_humidity_2m, wind: Math.round(c.wind_speed_10m) };
+      }).catch(function () { return null; });
+      var gP = fetch(gUrl).then(function (r) { return r.json(); }).then(function (g) {
+        return g.city || g.locality || g.principalSubdivision || '定位';
+      }).catch(function () { return '定位'; });
+      Promise.all([wP, gP]).then(function (res) {
+        var w = res[0], city = res[1];
+        if (!w) { fallback(city); return; }
+        fill({ icon: w.icon, temp: w.temp, text: w.text, city: city, hum: w.hum, wind: w.wind });
+      });
+    }, function () { fallback('北京'); }, { timeout: 8000 });
+    function fallback(city) { fill({ icon: '⛅', temp: '—', text: '实时获取失败·用默认城市', city: city || '北京', hum: '—', wind: '—' }); }
   }
 
   /* ---------- 路由 ---------- */
@@ -79,10 +87,30 @@
   function navigate(h) { location.hash = h; }
 
   /* ---------- 顶部栏 / 底部栏 ---------- */
-  function topbar(title, sub) {
-    return '<div class="topbar"><div><h1>' + esc(title) + '</h1>' +
+  function topbar(title, sub, editable) {
+    var titleHtml = '<h1' + (editable ? ' id="appTitle" data-action="edit-title" title="点击修改名称"' : '') + '>' + esc(title) +
+      (editable ? ' <span class="pen">✎</span>' : '') + '</h1>';
+    return '<div class="topbar"><div class="topbar-titles">' + titleHtml +
       (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div>' +
       '<button class="icon-btn" data-action="toggle-theme">🌗</button></div>';
+  }
+  function editTitle() {
+    var h1 = document.getElementById('appTitle');
+    if (!h1) return;
+    h1.removeAttribute('data-action');
+    var cur = Store.getSetting('appTitle', '电子私厨');
+    h1.innerHTML = '<input id="titleInput" class="title-input" maxlength="20" value="' + esc(cur) + '">';
+    var inp = document.getElementById('titleInput');
+    inp.focus(); inp.select();
+    var done = false;
+    function commit() {
+      if (done) return; done = true;
+      var v = (inp.value || '').trim();
+      if (v) Store.setSetting('appTitle', v);
+      renderHome();
+    }
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+    inp.addEventListener('blur', commit);
   }
   function tabbar(active) {
     var t = function (key, ic, label, mid) {
@@ -125,7 +153,9 @@
       '<div class="stat"><div class="muted">累计摄入</div><div class="v">' + totalKcal + '<span style="font-size:12px">kcal</span></div></div>' +
       '<div class="stat"><div class="muted">我的标签</div><div class="v">' + Store.get('tags').length + '</div></div></div>';
 
-    root.innerHTML = topbar('电子私厨', '我的私房菜工作台') +
+    var appTitle = Store.getSetting('appTitle', '电子私厨');
+    document.title = appTitle + ' · 我的私房菜工作台';
+    root.innerHTML = topbar(appTitle, '我的私房菜工作台', true) +
       '<div class="section">' +
       '<div class="card weather-card" id="weatherCard"><div class="weather-loading">🌤️ 正在获取实时天气…</div></div>' +
       recCard +
@@ -608,6 +638,7 @@
     var el = e.target.closest('[data-action]'); if (!el) return;
     var a = el.dataset.action; var p = a.split(':');
     if (p[0] === 'nav') { navigate(p[1]); }
+    else if (p[0] === 'edit-title') { editTitle(); }
     else if (p[0] === 'toggle-theme') { toggleTheme(); }
     else if (p[0] === 'toggle-view') { libView = (libView === 'grid') ? 'list' : 'grid'; renderLibrary(); }
     else if (p[0] === 'filter') { var key = p[1], val = p[2] || ''; libFilter[key] = (libFilter[key] === val) ? '' : val; renderLibrary(); }
