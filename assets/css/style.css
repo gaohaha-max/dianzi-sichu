@@ -115,6 +115,25 @@ body {
 .avatar-bg {
   position: absolute; right: -10px; bottom: -10px; width: 120px; opacity: .16; pointer-events: none;
 }
+/* 「我的」页头部：头像 + 厨神昵称 */
+.mine-header { text-align: center; padding: 26px 16px 6px; }
+.mine-avatar {
+  position: relative; width: 88px; height: 88px; margin: 0 auto 12px; border-radius: 50%; cursor: pointer;
+  background: linear-gradient(135deg, var(--peach), var(--lavender)); display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 22px rgba(247,168,196,.42); overflow: hidden;
+}
+.mine-avatar:active { transform: scale(.97); }
+.mine-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mine-avatar-emoji { font-size: 44px; }
+.mine-avatar-badge {
+  position: absolute; right: -2px; bottom: -2px; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--primary); color: #fff; font-size: 13px; display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--surface);
+}
+.mine-nick { font-size: 18px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.mine-nick[data-action]:active { opacity: .6; }
+.mine-nick .pen { font-size: 13px; opacity: .5; font-weight: 400; }
+.mine-hint { margin-top: 6px; font-size: 12px; }
 /* 首页年糕大厨：清晰呈现，不用虚化、不用白底（PNG 自身透明） */
 .avatar-hero {
   width: 96px; height: 96px; object-fit: contain; flex: 0 0 auto;
