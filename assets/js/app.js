@@ -48,11 +48,9 @@
     var el = document.getElementById('weatherCard');
     if (!el) return;
     var term = Solar.getTerm(new Date());
-    // 动态背景：有节气动漫图用图，无图用马卡龙渐变兜底
+    // 动态背景：符合节气色调的马卡龙渐变（每节气专属季节色）
     var grad = 'linear-gradient(135deg,' + term.grad[0] + ',' + term.grad[1] + ')';
-    el.style.backgroundImage = 'url(' + term.img + '), ' + grad;
-    el.style.backgroundSize = 'cover';
-    el.style.backgroundPosition = 'center';
+    el.style.background = grad;
 
     function tipBlock() {
       var rec = Solar.getRecommend(term.key);
@@ -102,7 +100,7 @@
     var term = Solar.getTerm(new Date());
     var rec = Solar.getRecommend(term.key);
     var grad = 'linear-gradient(135deg,' + term.grad[0] + ',' + term.grad[1] + ')';
-    var bg = 'url(' + term.img + '), ' + grad;
+    var bg = grad;
     function items(list, cls) {
       return (list || []).map(function (x) {
         return '<div class="solar-item"><div class="solar-item-h"><span class="tag ' + cls + '">' + (cls === 'good' ? '宜' : '忌') + '</span> ' + esc(x.n) + '</div>' +
@@ -371,10 +369,18 @@
     var user = Store.getUser();
     var tags = Store.get('tags');
 
-    root.innerHTML = topbar('我的', '数据与偏好中心') + avatarFor('mine') +
+    var nick = (user && user.nick) ? user.nick : '';
+    var avatarHtml = (user && user.avatar)
+      ? '<img class="mine-avatar-img" src="' + user.avatar + '" alt="">'
+      : '<span class="mine-avatar-emoji">🍳</span>';
+    root.innerHTML =
+      '<div class="mine-header">' +
+        '<div class="mine-avatar" data-action="edit-avatar">' + avatarHtml +
+          '<span class="mine-avatar-badge">📷</span></div>' +
+        '<div class="mine-nick" data-action="edit-nick">厨神：<span id="nickText">' + esc(nick || '点击设置昵称') + '</span> <span class="pen">✎</span></div>' +
+        '<div class="mine-hint muted">点击头像更换形象 · 点击名称修改昵称</div>' +
+      '</div>' +
       '<div class="section">' +
-      '<div class="card" style="display:flex;gap:12px;align-items:center"><div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,var(--peach),var(--lavender));display:flex;align-items:center;justify-content:center;font-size:26px">🍳</div>' +
-      '<div><div style="font-weight:800;font-size:16px">' + esc(user ? user.nick : '私厨主人') + '</div><div class="muted">点击编辑昵称</div></div></div>' +
 
       '<div class="card"><div class="between"><b>📊 我的统计</b><span class="muted" data-action="nav:calendar">饮食日历</span></div>' +
       '<div class="stat-grid" style="margin-top:8px">' +
@@ -657,6 +663,105 @@
     if (close) close.addEventListener('click', function () { mask.classList.remove('show'); });
   }
 
+  /* ---------- 昵称编辑（厨神：xx） ---------- */
+  function editNick() {
+    var span = document.getElementById('nickText');
+    if (!span) return;
+    var parent = span.parentNode;
+    var cur = (Store.getUser() && Store.getUser().nick) || '';
+    parent.innerHTML = '厨神：<input id="nickInput" class="title-input" style="width:58%;font-size:16px" maxlength="16" value="' + esc(cur) + '">';
+    var inp = document.getElementById('nickInput');
+    inp.focus(); inp.select();
+    var done = false;
+    function commit() {
+      if (done) return; done = true;
+      var v = (inp.value || '').trim();
+      Store.setUser({ nick: v });
+      renderMine();
+    }
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+    inp.addEventListener('blur', commit);
+  }
+
+  /* ---------- 头像更换 ---------- */
+  function openAvatarSheet() {
+    openSheet(
+      '<h3>更换头像</h3>' +
+      '<button class="btn primary block" id="avCamera" style="margin-bottom:10px">📷 拍照</button>' +
+      '<button class="btn block" id="avAlbum" style="margin-bottom:10px">🖼️ 从相册选择</button>' +
+      '<button class="btn block" id="avWechat" style="margin-bottom:10px">💬 链接微信一键照搬</button>' +
+      '<button class="btn block ghost" data-close>取消</button>'
+    );
+    document.getElementById('avCamera').addEventListener('click', function () {
+      document.getElementById('sheetMask').classList.remove('show');
+      pickImage(true).then(onAvatarFile);
+    });
+    document.getElementById('avAlbum').addEventListener('click', function () {
+      document.getElementById('sheetMask').classList.remove('show');
+      pickImage(false).then(onAvatarFile);
+    });
+    document.getElementById('avWechat').addEventListener('click', onWeChatAvatar);
+  }
+  function pickImage(useCamera) {
+    return new Promise(function (resolve) {
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/*';
+      if (useCamera) inp.setAttribute('capture', 'user');
+      inp.onchange = function () { var f = inp.files && inp.files[0]; resolve(f || null); };
+      inp.click();
+    });
+  }
+  function onAvatarFile(file) {
+    if (!file) return;
+    toast('处理图片中…');
+    Img.compress(file, 1024).then(function (d) {
+      return Img.crop(d);
+    }).then(function (cropped) {
+      if (cropped) setAvatar(cropped);
+      else renderMine();
+    }).catch(function () { toast('图片处理失败'); });
+  }
+  function onWeChatAvatar() {
+    var inWeChat = navigator.userAgent.toLowerCase().indexOf('micromessenger') >= 0;
+    var tip = inWeChat
+      ? '当前在微信内打开：可长按你的微信头像「保存到相册」，再返回用「从相册选择」导入；或直接粘贴头像链接：'
+      : '本页为纯静态站点，无后端无法直连微信授权。请粘贴你的微信头像链接（在微信里长按头像「复制链接」）：';
+    openSheet('<h3>链接微信头像</h3><p class="muted">' + tip + '</p>' +
+      '<div class="field"><input id="wxUrl" class="search" placeholder="https://thirdwx.qlogo.cn/..."></div>' +
+      '<button class="btn primary block" id="wxOk">确定</button>' +
+      '<button class="btn block ghost" data-close style="margin-top:8px">取消</button>');
+    document.getElementById('wxOk').addEventListener('click', function () {
+      var url = (document.getElementById('wxUrl').value || '').trim();
+      if (!url) { toast('请输入链接'); return; }
+      document.getElementById('sheetMask').classList.remove('show');
+      toast('加载中…');
+      loadImageFromUrl(url).then(function (d) { setAvatar(d); }).catch(function () { setAvatar(url); });
+    });
+  }
+  function loadImageFromUrl(url) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function () {
+        try {
+          var c = document.createElement('canvas');
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          c.getContext('2d').drawImage(img, 0, 0);
+          resolve(c.toDataURL('image/png'));
+        } catch (e) { resolve(url); }
+      };
+      img.onerror = function () { reject(); };
+      img.src = url;
+    });
+  }
+  function setAvatar(dataUrl) {
+    Store.setUser({ avatar: dataUrl });
+    var el = document.querySelector('.mine-avatar');
+    if (el) el.innerHTML = '<img class="mine-avatar-img" src="' + dataUrl + '" alt=""><span class="mine-avatar-badge">📷</span>';
+    document.getElementById('sheetMask').classList.remove('show');
+    toast('头像已更新');
+  }
+
   /* ---------- 主题 ---------- */
   function toggleTheme() {
     var u = Store.getUser() || {}; var t = (u.theme === 'dark') ? 'light' : 'dark';
@@ -684,6 +789,8 @@
     if (p[0] === 'nav') { navigate(p[1]); }
     else if (p[0] === 'solar-detail') { navigate('solar'); }
     else if (p[0] === 'edit-title') { editTitle(); }
+    else if (p[0] === 'edit-nick') { editNick(); }
+    else if (p[0] === 'edit-avatar') { openAvatarSheet(); }
     else if (p[0] === 'toggle-theme') { toggleTheme(); }
     else if (p[0] === 'toggle-view') { libView = (libView === 'grid') ? 'list' : 'grid'; renderLibrary(); }
     else if (p[0] === 'filter') { var key = p[1], val = p[2] || ''; libFilter[key] = (libFilter[key] === val) ? '' : val; renderLibrary(); }
@@ -717,6 +824,7 @@
   function boot() {
     Store.init();
     var u = Store.getUser();
+    if (u && u.nick === '私厨主人') { Store.setUser({ nick: '大厨' }); u = Store.getUser(); }
     applyTheme(u && u.theme);
     if (!u.privacyAccepted) { showPrivacy(); Store.setUser({ privacyAccepted: true }); }
     window.addEventListener('hashchange', function () { render(currentRoute()); });
