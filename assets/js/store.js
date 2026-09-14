@@ -59,7 +59,7 @@
       // seed local user
       var users = read('users');
       if (!users.length) {
-        users = [{ _id: uid(), nick: '私厨主人', theme: 'light', privacyAccepted: false, createdAt: Date.now() }];
+        users = [{ _id: uid(), nick: '大厨', theme: 'light', privacyAccepted: false, createdAt: Date.now() }];
         write('users', users);
       }
       return this;
